@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Check, ChevronDown, ChevronRight, Upload, Link as LinkIcon, Trash2, Edit, Plus, X, LogOut, Users, TrendingUp, BookOpen, Menu } from 'lucide-react';
-import { supabase } from './supabaseClient'; // Make sure you created this file!
+import { supabase } from './supabaseClient';
 
 const TrainingManagementSystem = () => {
   // 1. Initialize State
@@ -10,6 +10,10 @@ const TrainingManagementSystem = () => {
   const [trainingPaths, setTrainingPaths] = useState([]);
   const [progress, setProgress] = useState({});
   const [view, setView] = useState('login');
+  
+  // New: Lifted state for the Admin Dashboard Tab
+  const [adminTab, setAdminTab] = useState('overview');
+
   const [selectedPath, setSelectedPath] = useState(null);
   const [expandedCategories, setExpandedCategories] = useState({});
   const [editingPath, setEditingPath] = useState(null);
@@ -31,14 +35,13 @@ const TrainingManagementSystem = () => {
       const { data: usersData } = await supabase.from('users').select('*');
       if (usersData) setUsers(usersData);
 
-      // Fetch Paths & Categories (Joined)
+      // Fetch Paths & Categories
       const { data: pathsData } = await supabase
         .from('training_paths')
         .select(`*, categories(*)`)
         .order('id');
       
       if (pathsData) {
-        // Sort categories to ensure they stay in order
         const sortedPaths = pathsData.map(path => ({
           ...path,
           categories: path.categories ? path.categories.sort((a, b) => a.name.localeCompare(b.name)) : []
@@ -68,11 +71,8 @@ const TrainingManagementSystem = () => {
     loadData();
   }, []);
 
-  // 3. Handlers (Supabase Updates)
-
+  // 3. Handlers
   const handleLogin = (username, password) => {
-    // Note: For production, you should use supabase.auth.signInWithPassword()
-    // This maintains your existing simple logic but checks against the DB users
     const user = users.find(u => u.username === username && u.password === password);
     if (user) {
       setCurrentUser(user);
@@ -93,10 +93,8 @@ const TrainingManagementSystem = () => {
     const isComplete = progress[key];
     const newValue = !isComplete;
 
-    // 1. Optimistic UI Update (Instant feedback)
     setProgress(prev => ({ ...prev, [key]: newValue }));
 
-    // 2. Database Update
     if (newValue) {
       await supabase.from('user_progress').upsert({
         user_id: currentUser.id,
@@ -120,7 +118,6 @@ const TrainingManagementSystem = () => {
       video: ''
     };
 
-    // Optimistic Update
     setTrainingPaths(prev => prev.map(path => {
       if (path.id === pathId) {
         return { ...path, categories: [...path.categories, newCategory] };
@@ -130,12 +127,10 @@ const TrainingManagementSystem = () => {
     setShowAddCategory(null);
     setNewCategoryName('');
 
-    // Database Update
     await supabase.from('categories').insert(newCategory);
   };
 
   const updateCategory = async (pathId, categoryId, field, value) => {
-    // Optimistic Update
     setTrainingPaths(prev => prev.map(path => {
       if (path.id === pathId) {
         return {
@@ -148,7 +143,6 @@ const TrainingManagementSystem = () => {
       return path;
     }));
 
-    // Database Update
     await supabase.from('categories')
       .update({ [field]: value })
       .match({ id: categoryId });
@@ -156,7 +150,6 @@ const TrainingManagementSystem = () => {
 
   const deleteCategory = async (pathId, categoryId) => {
     if (confirm('Are you sure you want to delete this category?')) {
-      // Optimistic Update
       setTrainingPaths(prev => prev.map(path => {
         if (path.id === pathId) {
           return {
@@ -167,7 +160,6 @@ const TrainingManagementSystem = () => {
         return path;
       }));
 
-      // Database Update
       await supabase.from('categories').delete().match({ id: categoryId });
     }
   };
@@ -186,10 +178,9 @@ const TrainingManagementSystem = () => {
   const renameCategory = async (pathId, categoryId, newName) => {
     updateCategory(pathId, categoryId, 'name', newName);
     setEditingCategory(null);
-    // updateCategory handles the DB call
   };
 
-  // 4. Calculations (Same as before)
+  // 4. Calculations
   const getCategoryProgress = (userId, pathId, categoryId) => {
     const key = `${userId}-${pathId}-${categoryId}`;
     return progress[key] || false;
@@ -228,10 +219,9 @@ const TrainingManagementSystem = () => {
     };
   };
 
-
-  // 5. Views (Login, Staff, Manager, Admin)
+  // 5. Render Functions (Converted from components to avoid re-mounting issues)
   
-  const LoginScreen = () => {
+  const renderLoginScreen = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
 
@@ -281,7 +271,7 @@ const TrainingManagementSystem = () => {
     );
   };
 
-  const TrainingView = () => {
+  const renderTrainingView = () => {
     const userProg = getUserProgress(currentUser.id);
 
     return (
@@ -435,7 +425,7 @@ const TrainingManagementSystem = () => {
     );
   };
 
-  const ManagerDashboard = () => {
+  const renderManagerDashboard = () => {
     const managerBranch = branches.find(b => b.id === currentUser.branchId);
     const branchStaff = users.filter(u => u.branchId === currentUser.branchId && u.role === 'staff');
 
@@ -546,9 +536,9 @@ const TrainingManagementSystem = () => {
     );
   };
 
-  const AdminDashboard = () => {
-    const [activeTab, setActiveTab] = useState('overview');
-
+  const renderAdminDashboard = () => {
+    // Note: adminTab state is now managed at the top level
+    
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="bg-white shadow-sm border-b border-gray-200">
@@ -573,21 +563,21 @@ const TrainingManagementSystem = () => {
           <div className="mb-6 border-b border-gray-200">
             <div className="flex space-x-8">
               <button
-                onClick={() => setActiveTab('overview')}
-                className={`pb-4 px-2 font-medium transition-colors ${activeTab === 'overview' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setAdminTab('overview')}
+                className={`pb-4 px-2 font-medium transition-colors ${adminTab === 'overview' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 Overview
               </button>
               <button
-                onClick={() => setActiveTab('manage')}
-                className={`pb-4 px-2 font-medium transition-colors ${activeTab === 'manage' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setAdminTab('manage')}
+                className={`pb-4 px-2 font-medium transition-colors ${adminTab === 'manage' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 Manage Training
               </button>
             </div>
           </div>
 
-          {activeTab === 'overview' ? (
+          {adminTab === 'overview' ? (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 {branches.map(branch => {
@@ -803,19 +793,20 @@ const TrainingManagementSystem = () => {
     );
   };
 
+  // 6. Main Render
   if (!currentUser) {
-    return <LoginScreen />;
+    return renderLoginScreen();
   }
 
   if (view === 'admin-dashboard') {
-    return <AdminDashboard />;
+    return renderAdminDashboard();
   }
 
   if (view === 'manager-dashboard') {
-    return <ManagerDashboard />;
+    return renderManagerDashboard();
   }
 
-  return <TrainingView />;
+  return renderTrainingView();
 };
 
 export default TrainingManagementSystem;
