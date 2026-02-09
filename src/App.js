@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Check, ChevronDown, ChevronRight, Upload, Link as LinkIcon, Trash2, Edit, Plus, X, LogOut, Users, TrendingUp, BookOpen, Menu } from 'lucide-react';
+import { supabase } from './supabaseClient';
 
 const TrainingManagementSystem = () => {
   // Initialize state from storage or defaults
@@ -29,32 +30,37 @@ const TrainingManagementSystem = () => {
     }
   }, [branches, users, trainingPaths, progress]);
 
-  const loadFromStorage = async () => {
-    try {
-      const [branchesData, usersData, pathsData, progressData] = await Promise.all([
-        window.storage.get('training_branches'),
-        window.storage.get('training_users'),
-        window.storage.get('training_paths'),
-        window.storage.get('training_progress')
-      ]);
+  const loadFromDatabase = async () => {
+  // 1. Fetch Users
+  const { data: usersData } = await supabase.from('users').select('*');
+  if (usersData) setUsers(usersData);
 
-      if (branchesData?.value) setBranches(JSON.parse(branchesData.value));
-      else initializeDefaultBranches();
+  // 2. Fetch Branches
+  const { data: branchesData } = await supabase.from('branches').select('*');
+  if (branchesData) setBranches(branchesData);
 
-      if (usersData?.value) setUsers(JSON.parse(usersData.value));
-      else initializeDefaultUsers();
+  // 3. Fetch Paths and Categories (Join them)
+  const { data: pathsData } = await supabase
+    .from('training_paths')
+    .select(`
+      *,
+      categories (*)
+    `);
+  if (pathsData) setTrainingPaths(pathsData);
 
-      if (pathsData?.value) setTrainingPaths(JSON.parse(pathsData.value));
-      else initializeDefaultPaths();
-
-      if (progressData?.value) setProgress(JSON.parse(progressData.value));
-    } catch (error) {
-      // If storage fails or is empty, initialize with defaults
-      initializeDefaultBranches();
-      initializeDefaultUsers();
-      initializeDefaultPaths();
-    }
-  };
+  // 4. Fetch Progress (Convert array to your object map format)
+  const { data: progressData } = await supabase.from('user_progress').select('*');
+  if (progressData) {
+    const progressMap = {};
+    progressData.forEach(p => {
+      // Recreate your key format: USERID-PATHID-CATID
+      if(p.completed) {
+         progressMap[`${p.user_id}-${p.path_id}-${p.category_id}`] = true;
+      }
+    });
+    setProgress(progressMap);
+  }
+};
 
   const saveToStorage = async () => {
     try {
@@ -187,12 +193,28 @@ const TrainingManagementSystem = () => {
     setShowMobileMenu(false);
   };
 
-  const toggleCategoryCompletion = (pathId, categoryId) => {
+  const toggleCategoryCompletion = async (pathId, categoryId) => {
+    const isComplete = getCategoryProgress(currentUser.id, pathId, categoryId);
+    const newValue = !isComplete;
+
+    // Optimistic UI Update (update state immediately)
     const key = `${currentUser.id}-${pathId}-${categoryId}`;
-    setProgress(prev => ({
-      ...prev,
-      [key]: !prev[key]
-    }));
+    setProgress(prev => ({ ...prev, [key]: newValue }));
+
+    // Database Update
+    if (newValue) {
+      // Insert record
+      await supabase.from('user_progress').upsert({
+        user_id: currentUser.id,
+        path_id: pathId,
+        category_id: categoryId,
+        completed: true
+      });
+    } else {
+      // Delete record (or set false)
+      await supabase.from('user_progress').delete()
+        .match({ user_id: currentUser.id, category_id: categoryId });
+    }
   };
 
   const getCategoryProgress = (userId, pathId, categoryId) => {
