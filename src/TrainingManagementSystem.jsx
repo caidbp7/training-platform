@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Check, ChevronDown, ChevronRight, Upload, Link as LinkIcon, Trash2, Edit, Plus, X, LogOut, Users, TrendingUp, BookOpen, Menu } from 'lucide-react';
-import { supabase } from './supabaseClient';
+import { supabase } from './supabaseClient'; // Make sure you created this file!
 
 const TrainingManagementSystem = () => {
-  // Initialize state from storage or defaults
+  // 1. Initialize State
   const [currentUser, setCurrentUser] = useState(null);
   const [branches, setBranches] = useState([]);
   const [users, setUsers] = useState([]);
@@ -17,166 +17,62 @@ const TrainingManagementSystem = () => {
   const [showAddCategory, setShowAddCategory] = useState(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Load data from storage on mount
+  // 2. Data Loading (Supabase)
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      // Fetch Branches
+      const { data: branchesData } = await supabase.from('branches').select('*');
+      if (branchesData) setBranches(branchesData);
+
+      // Fetch Users
+      const { data: usersData } = await supabase.from('users').select('*');
+      if (usersData) setUsers(usersData);
+
+      // Fetch Paths & Categories (Joined)
+      const { data: pathsData } = await supabase
+        .from('training_paths')
+        .select(`*, categories(*)`)
+        .order('id');
+      
+      if (pathsData) {
+        // Sort categories to ensure they stay in order
+        const sortedPaths = pathsData.map(path => ({
+          ...path,
+          categories: path.categories ? path.categories.sort((a, b) => a.name.localeCompare(b.name)) : []
+        }));
+        setTrainingPaths(sortedPaths);
+      }
+
+      // Fetch Progress
+      const { data: progressData } = await supabase.from('user_progress').select('*');
+      if (progressData) {
+        const progressMap = {};
+        progressData.forEach(p => {
+          if (p.completed) {
+            progressMap[`${p.user_id}-${p.path_id}-${p.category_id}`] = true;
+          }
+        });
+        setProgress(progressMap);
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    loadFromStorage();
+    loadData();
   }, []);
 
-  // Save data to storage whenever it changes
-  useEffect(() => {
-    if (branches.length > 0 || users.length > 0 || trainingPaths.length > 0) {
-      saveToStorage();
-    }
-  }, [branches, users, trainingPaths, progress]);
-
-  const loadFromDatabase = async () => {
-  // 1. Fetch Users
-  const { data: usersData } = await supabase.from('users').select('*');
-  if (usersData) setUsers(usersData);
-
-  // 2. Fetch Branches
-  const { data: branchesData } = await supabase.from('branches').select('*');
-  if (branchesData) setBranches(branchesData);
-
-  // 3. Fetch Paths and Categories (Join them)
-  const { data: pathsData } = await supabase
-    .from('training_paths')
-    .select(`
-      *,
-      categories (*)
-    `);
-  if (pathsData) setTrainingPaths(pathsData);
-
-  // 4. Fetch Progress (Convert array to your object map format)
-  const { data: progressData } = await supabase.from('user_progress').select('*');
-  if (progressData) {
-    const progressMap = {};
-    progressData.forEach(p => {
-      // Recreate your key format: USERID-PATHID-CATID
-      if(p.completed) {
-         progressMap[`${p.user_id}-${p.path_id}-${p.category_id}`] = true;
-      }
-    });
-    setProgress(progressMap);
-  }
-};
-
-  const saveToStorage = async () => {
-    try {
-      await Promise.all([
-        window.storage.set('training_branches', JSON.stringify(branches)),
-        window.storage.set('training_users', JSON.stringify(users)),
-        window.storage.set('training_paths', JSON.stringify(trainingPaths)),
-        window.storage.set('training_progress', JSON.stringify(progress))
-      ]);
-    } catch (error) {
-      console.error('Failed to save to storage:', error);
-    }
-  };
-
-  const initializeDefaultBranches = () => {
-    setBranches([
-      { id: 'branch1', name: 'Main Branch', managerId: 'manager1' },
-      { id: 'branch2', name: 'North Branch', managerId: 'manager2' }
-    ]);
-  };
-
-  const initializeDefaultUsers = () => {
-    setUsers([
-      { id: 'admin1', username: 'admin', password: 'admin123', role: 'admin', name: 'System Admin' },
-      { id: 'manager1', username: 'manager1', password: 'manager123', role: 'manager', name: 'John Manager', branchId: 'branch1' },
-      { id: 'manager2', username: 'manager2', password: 'manager123', role: 'manager', name: 'Jane Manager', branchId: 'branch2' },
-      { id: 'staff1', username: 'staff1', password: 'staff123', role: 'staff', name: 'Alice Smith', branchId: 'branch1' },
-      { id: 'staff2', username: 'staff2', password: 'staff123', role: 'staff', name: 'Bob Jones', branchId: 'branch1' },
-      { id: 'staff3', username: 'staff3', password: 'staff123', role: 'staff', name: 'Carol White', branchId: 'branch2' }
-    ]);
-  };
-
-  const initializeDefaultPaths = () => {
-    setTrainingPaths([
-      {
-        id: 'sales',
-        name: 'Sales',
-        categories: [
-          {
-            id: 'sales-basics',
-            name: 'Sales Basics',
-            documentation: 'https://example.com/sales-basics.pdf',
-            video: 'https://www.youtube.com/watch?v=example'
-          },
-          {
-            id: 'customer-service',
-            name: 'Customer Service',
-            documentation: '',
-            video: ''
-          }
-        ]
-      },
-      {
-        id: 'parts',
-        name: 'Parts',
-        categories: [
-          {
-            id: 'inventory-management',
-            name: 'Inventory Management',
-            documentation: '',
-            video: ''
-          }
-        ]
-      },
-      {
-        id: 'service',
-        name: 'Service',
-        categories: [
-          {
-            id: 'service-procedures',
-            name: 'Service Procedures',
-            documentation: '',
-            video: ''
-          }
-        ]
-      },
-      {
-        id: 'admin',
-        name: 'Admin',
-        categories: [
-          {
-            id: 'office-procedures',
-            name: 'Office Procedures',
-            documentation: '',
-            video: ''
-          }
-        ]
-      },
-      {
-        id: 'finance',
-        name: 'Finance',
-        categories: [
-          {
-            id: 'financial-reporting',
-            name: 'Financial Reporting',
-            documentation: '',
-            video: ''
-          }
-        ]
-      },
-      {
-        id: 'settlements',
-        name: 'Settlements',
-        categories: [
-          {
-            id: 'settlement-process',
-            name: 'Settlement Process',
-            documentation: '',
-            video: ''
-          }
-        ]
-      }
-    ]);
-  };
+  // 3. Handlers (Supabase Updates)
 
   const handleLogin = (username, password) => {
+    // Note: For production, you should use supabase.auth.signInWithPassword()
+    // This maintains your existing simple logic but checks against the DB users
     const user = users.find(u => u.username === username && u.password === password);
     if (user) {
       setCurrentUser(user);
@@ -190,20 +86,18 @@ const TrainingManagementSystem = () => {
     setCurrentUser(null);
     setView('login');
     setSelectedPath(null);
-    setShowMobileMenu(false);
   };
 
   const toggleCategoryCompletion = async (pathId, categoryId) => {
-    const isComplete = getCategoryProgress(currentUser.id, pathId, categoryId);
+    const key = `${currentUser.id}-${pathId}-${categoryId}`;
+    const isComplete = progress[key];
     const newValue = !isComplete;
 
-    // Optimistic UI Update (update state immediately)
-    const key = `${currentUser.id}-${pathId}-${categoryId}`;
+    // 1. Optimistic UI Update (Instant feedback)
     setProgress(prev => ({ ...prev, [key]: newValue }));
 
-    // Database Update
+    // 2. Database Update
     if (newValue) {
-      // Insert record
       await supabase.from('user_progress').upsert({
         user_id: currentUser.id,
         path_id: pathId,
@@ -211,12 +105,91 @@ const TrainingManagementSystem = () => {
         completed: true
       });
     } else {
-      // Delete record (or set false)
       await supabase.from('user_progress').delete()
-        .match({ user_id: currentUser.id, category_id: categoryId });
+        .match({ user_id: currentUser.id, path_id: pathId, category_id: categoryId });
     }
   };
 
+  const addCategory = async (pathId, categoryName) => {
+    const newId = `cat-${Date.now()}`;
+    const newCategory = {
+      id: newId,
+      path_id: pathId,
+      name: categoryName,
+      documentation: '',
+      video: ''
+    };
+
+    // Optimistic Update
+    setTrainingPaths(prev => prev.map(path => {
+      if (path.id === pathId) {
+        return { ...path, categories: [...path.categories, newCategory] };
+      }
+      return path;
+    }));
+    setShowAddCategory(null);
+    setNewCategoryName('');
+
+    // Database Update
+    await supabase.from('categories').insert(newCategory);
+  };
+
+  const updateCategory = async (pathId, categoryId, field, value) => {
+    // Optimistic Update
+    setTrainingPaths(prev => prev.map(path => {
+      if (path.id === pathId) {
+        return {
+          ...path,
+          categories: path.categories.map(cat => 
+            cat.id === categoryId ? { ...cat, [field]: value } : cat
+          )
+        };
+      }
+      return path;
+    }));
+
+    // Database Update
+    await supabase.from('categories')
+      .update({ [field]: value })
+      .match({ id: categoryId });
+  };
+
+  const deleteCategory = async (pathId, categoryId) => {
+    if (confirm('Are you sure you want to delete this category?')) {
+      // Optimistic Update
+      setTrainingPaths(prev => prev.map(path => {
+        if (path.id === pathId) {
+          return {
+            ...path,
+            categories: path.categories.filter(cat => cat.id !== categoryId)
+          };
+        }
+        return path;
+      }));
+
+      // Database Update
+      await supabase.from('categories').delete().match({ id: categoryId });
+    }
+  };
+
+  const renamePath = async (pathId, newName) => {
+    setTrainingPaths(prev => prev.map(path => 
+      path.id === pathId ? { ...path, name: newName } : path
+    ));
+    setEditingPath(null);
+
+    await supabase.from('training_paths')
+      .update({ name: newName })
+      .match({ id: pathId });
+  };
+
+  const renameCategory = async (pathId, categoryId, newName) => {
+    updateCategory(pathId, categoryId, 'name', newName);
+    setEditingCategory(null);
+    // updateCategory handles the DB call
+  };
+
+  // 4. Calculations (Same as before)
   const getCategoryProgress = (userId, pathId, categoryId) => {
     const key = `${userId}-${pathId}-${categoryId}`;
     return progress[key] || false;
@@ -255,69 +228,9 @@ const TrainingManagementSystem = () => {
     };
   };
 
-  const updateCategory = (pathId, categoryId, field, value) => {
-    setTrainingPaths(prev => prev.map(path => {
-      if (path.id === pathId) {
-        return {
-          ...path,
-          categories: path.categories.map(cat => 
-            cat.id === categoryId ? { ...cat, [field]: value } : cat
-          )
-        };
-      }
-      return path;
-    }));
-  };
 
-  const addCategory = (pathId, categoryName) => {
-    const newCategory = {
-      id: `${pathId}-${Date.now()}`,
-      name: categoryName,
-      documentation: '',
-      video: ''
-    };
-    
-    setTrainingPaths(prev => prev.map(path => {
-      if (path.id === pathId) {
-        return {
-          ...path,
-          categories: [...path.categories, newCategory]
-        };
-      }
-      return path;
-    }));
-    
-    setShowAddCategory(null);
-    setNewCategoryName('');
-  };
-
-  const deleteCategory = (pathId, categoryId) => {
-    if (confirm('Are you sure you want to delete this category?')) {
-      setTrainingPaths(prev => prev.map(path => {
-        if (path.id === pathId) {
-          return {
-            ...path,
-            categories: path.categories.filter(cat => cat.id !== categoryId)
-          };
-        }
-        return path;
-      }));
-    }
-  };
-
-  const renamePath = (pathId, newName) => {
-    setTrainingPaths(prev => prev.map(path => 
-      path.id === pathId ? { ...path, name: newName } : path
-    ));
-    setEditingPath(null);
-  };
-
-  const renameCategory = (pathId, categoryId, newName) => {
-    updateCategory(pathId, categoryId, 'name', newName);
-    setEditingCategory(null);
-  };
-
-  // Login Screen
+  // 5. Views (Login, Staff, Manager, Admin)
+  
   const LoginScreen = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -357,32 +270,22 @@ const TrainingManagementSystem = () => {
             
             <button
               onClick={() => handleLogin(username, password)}
-              className="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+              disabled={loading}
+              className="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50"
             >
-              Sign In
+              {loading ? 'Loading...' : 'Sign In'}
             </button>
-          </div>
-
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <p className="text-sm text-gray-600 mb-2">Demo Credentials:</p>
-            <div className="text-xs text-gray-500 space-y-1">
-              <div><strong>Admin:</strong> admin / admin123</div>
-              <div><strong>Manager:</strong> manager1 / manager123</div>
-              <div><strong>Staff:</strong> staff1 / staff123</div>
-            </div>
           </div>
         </div>
       </div>
     );
   };
 
-  // Staff Training View
   const TrainingView = () => {
     const userProg = getUserProgress(currentUser.id);
 
     return (
       <div className="min-h-screen bg-gray-50">
-        {/* Header */}
         <div className="bg-white shadow-sm border-b border-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex justify-between items-center">
@@ -417,7 +320,6 @@ const TrainingManagementSystem = () => {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            {/* Sidebar - Training Paths */}
             <div className={`lg:col-span-1 ${showMobileMenu ? 'block' : 'hidden lg:block'}`}>
               <div className="bg-white rounded-lg shadow-sm p-4 sticky top-4">
                 <h2 className="font-semibold text-gray-800 mb-4">Training Paths</h2>
@@ -442,7 +344,6 @@ const TrainingManagementSystem = () => {
               </div>
             </div>
 
-            {/* Main Content */}
             <div className="lg:col-span-3">
               {!selectedPath ? (
                 <div className="bg-white rounded-lg shadow-sm p-8 text-center">
@@ -503,7 +404,6 @@ const TrainingManagementSystem = () => {
                                 </a>
                               </div>
                             )}
-                            
                             {category.video && (
                               <div>
                                 <h4 className="text-sm font-medium text-gray-700 mb-2">Training Video</h4>
@@ -518,7 +418,6 @@ const TrainingManagementSystem = () => {
                                 </a>
                               </div>
                             )}
-
                             {!category.documentation && !category.video && (
                               <p className="text-sm text-gray-500 italic">No materials available yet</p>
                             )}
@@ -536,7 +435,6 @@ const TrainingManagementSystem = () => {
     );
   };
 
-  // Manager Dashboard
   const ManagerDashboard = () => {
     const managerBranch = branches.find(b => b.id === currentUser.branchId);
     const branchStaff = users.filter(u => u.branchId === currentUser.branchId && u.role === 'staff');
@@ -580,7 +478,6 @@ const TrainingManagementSystem = () => {
                 <Users className="w-12 h-12 text-indigo-600" />
               </div>
             </div>
-
             <div className="bg-white rounded-lg shadow-sm p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -592,7 +489,6 @@ const TrainingManagementSystem = () => {
                 <TrendingUp className="w-12 h-12 text-green-600" />
               </div>
             </div>
-
             <div className="bg-white rounded-lg shadow-sm p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -605,7 +501,6 @@ const TrainingManagementSystem = () => {
               </div>
             </div>
           </div>
-
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200">
               <h2 className="text-lg font-semibold text-gray-800">Staff Progress</h2>
@@ -614,15 +509,9 @@ const TrainingManagementSystem = () => {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Staff Member
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Completed
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Progress
-                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff Member</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completed</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -640,10 +529,7 @@ const TrainingManagementSystem = () => {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="w-full bg-gray-200 rounded-full h-2 mr-2">
-                              <div
-                                className="bg-indigo-600 h-2 rounded-full"
-                                style={{ width: `${prog.percentage}%` }}
-                              ></div>
+                              <div className="bg-indigo-600 h-2 rounded-full" style={{ width: `${prog.percentage}%` }}></div>
                             </div>
                             <span className="text-sm font-medium text-gray-700">{prog.percentage}%</span>
                           </div>
@@ -660,7 +546,6 @@ const TrainingManagementSystem = () => {
     );
   };
 
-  // Admin Dashboard
   const AdminDashboard = () => {
     const [activeTab, setActiveTab] = useState('overview');
 
@@ -685,26 +570,17 @@ const TrainingManagementSystem = () => {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Tabs */}
           <div className="mb-6 border-b border-gray-200">
             <div className="flex space-x-8">
               <button
                 onClick={() => setActiveTab('overview')}
-                className={`pb-4 px-2 font-medium transition-colors ${
-                  activeTab === 'overview'
-                    ? 'border-b-2 border-indigo-600 text-indigo-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
+                className={`pb-4 px-2 font-medium transition-colors ${activeTab === 'overview' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 Overview
               </button>
               <button
                 onClick={() => setActiveTab('manage')}
-                className={`pb-4 px-2 font-medium transition-colors ${
-                  activeTab === 'manage'
-                    ? 'border-b-2 border-indigo-600 text-indigo-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
+                className={`pb-4 px-2 font-medium transition-colors ${activeTab === 'manage' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 Manage Training
               </button>
@@ -713,7 +589,6 @@ const TrainingManagementSystem = () => {
 
           {activeTab === 'overview' ? (
             <>
-              {/* Branch Overview */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 {branches.map(branch => {
                   const branchProg = getBranchProgress(branch.id);
@@ -732,10 +607,7 @@ const TrainingManagementSystem = () => {
                         </div>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className="bg-indigo-600 h-2 rounded-full"
-                          style={{ width: `${branchProg.percentage}%` }}
-                        ></div>
+                        <div className="bg-indigo-600 h-2 rounded-full" style={{ width: `${branchProg.percentage}%` }}></div>
                       </div>
                       <div className="mt-2 text-sm text-gray-600">
                         {branchProg.completed} / {branchProg.total} modules completed
@@ -745,7 +617,6 @@ const TrainingManagementSystem = () => {
                 })}
               </div>
 
-              {/* All Users Progress */}
               <div className="bg-white rounded-lg shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-200">
                   <h2 className="text-lg font-semibold text-gray-800">All Staff Progress</h2>
@@ -754,18 +625,10 @@ const TrainingManagementSystem = () => {
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Staff Member
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Branch
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Completed
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Progress
-                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff Member</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Branch</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completed</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -786,10 +649,7 @@ const TrainingManagementSystem = () => {
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center">
                                 <div className="w-full bg-gray-200 rounded-full h-2 mr-2">
-                                  <div
-                                    className="bg-indigo-600 h-2 rounded-full"
-                                    style={{ width: `${prog.percentage}%` }}
-                                  ></div>
+                                  <div className="bg-indigo-600 h-2 rounded-full" style={{ width: `${prog.percentage}%` }}></div>
                                 </div>
                                 <span className="text-sm font-medium text-gray-700">{prog.percentage}%</span>
                               </div>
@@ -803,7 +663,6 @@ const TrainingManagementSystem = () => {
               </div>
             </>
           ) : (
-            /* Manage Training Content */
             <div className="space-y-6">
               {trainingPaths.map(path => (
                 <div key={path.id} className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -909,14 +768,13 @@ const TrainingManagementSystem = () => {
                               <LinkIcon className="w-4 h-4 text-gray-400" />
                               <input
                                 type="text"
-                                value={category.documentation}
+                                value={category.documentation || ''}
                                 onChange={(e) => updateCategory(path.id, category.id, 'documentation', e.target.value)}
                                 placeholder="https://example.com/documentation.pdf"
                                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
                               />
                             </div>
                           </div>
-
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                               Video URL
@@ -925,7 +783,7 @@ const TrainingManagementSystem = () => {
                               <LinkIcon className="w-4 h-4 text-gray-400" />
                               <input
                                 type="text"
-                                value={category.video}
+                                value={category.video || ''}
                                 onChange={(e) => updateCategory(path.id, category.id, 'video', e.target.value)}
                                 placeholder="https://youtube.com/watch?v=..."
                                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
@@ -945,7 +803,6 @@ const TrainingManagementSystem = () => {
     );
   };
 
-  // Main Render
   if (!currentUser) {
     return <LoginScreen />;
   }
