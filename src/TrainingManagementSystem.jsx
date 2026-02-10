@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Check, ChevronDown, ChevronRight, Link as LinkIcon, Trash2, Edit, Plus, X, LogOut, Users, TrendingUp, BookOpen, Menu, FileText, Video, File, UploadCloud } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Link as LinkIcon, Trash2, Edit, Plus, X, LogOut, Users, TrendingUp, BookOpen, Menu, FileText, Video, File, UploadCloud, UserPlus, Building } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 // --- HELPER FUNCTIONS ---
@@ -44,41 +44,33 @@ const getBranchProgress = (users, trainingPaths, progressMap, branchId) => {
 
 // Simple CSV Parser
 const parseCSV = (text) => {
-  // 1. Strip Byte Order Mark (BOM) if present (common in Excel CSVs)
-  if (text.charCodeAt(0) === 0xFEFF) {
-    text = text.slice(1);
-  }
-
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   const rows = [];
   let currentRow = [];
   let currentField = '';
   let inQuote = false;
   
-  // 2. State-machine parser to handle quotes and newlines correctly
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
-    
     if (inQuote) {
       if (char === '"') {
         if (i + 1 < text.length && text[i + 1] === '"') {
-          currentField += '"'; // Handle escaped quote ("")
+          currentField += '"';
           i++;
         } else {
-          inQuote = false; // End of quoted field
+          inQuote = false;
         }
       } else {
         currentField += char;
       }
     } else {
       if (char === '"') {
-        inQuote = true; // Start of quoted field
+        inQuote = true;
       } else if (char === ',') {
         currentRow.push(currentField.trim());
         currentField = '';
       } else if (char === '\n' || char === '\r') {
-        if (char === '\r' && i + 1 < text.length && text[i + 1] === '\n') {
-          i++; // Handle CRLF
-        }
+        if (char === '\r' && i + 1 < text.length && text[i + 1] === '\n') i++;
         currentRow.push(currentField.trim());
         if (currentRow.some(field => field)) rows.push(currentRow);
         currentRow = [];
@@ -89,20 +81,17 @@ const parseCSV = (text) => {
     }
   }
   
-  // Push the last row if it exists
   if (currentField || currentRow.length > 0) {
     currentRow.push(currentField.trim());
     if (currentRow.some(field => field)) rows.push(currentRow);
   }
   
-  // 3. Map headers to lowercase keys
   if (rows.length === 0) return [];
   const headers = rows[0].map(h => h.toLowerCase().replace(/^\ufeff/, ''));
   
   return rows.slice(1).map(row => {
     const entry = {};
     headers.forEach((h, i) => {
-      // Map columns safely
       entry[h] = row[i] || ''; 
     });
     return entry;
@@ -154,14 +143,11 @@ const BulkUploadButton = ({ onUploadComplete }) => {
         let skippedCount = 0;
 
         for (const row of data) {
-          // 1. Validate Row (Updated to match your CSV headers)
-          // Note: We check row['material name'] instead of row.material
           if (!row.path || !row.category || !row['material name']) {
             skippedCount++;
             continue;
           }
 
-          // 2. Find or Create Path
           let pathId;
           const { data: existingPaths } = await supabase.from('training_paths').select('id').eq('name', row.path).single();
           
@@ -173,7 +159,6 @@ const BulkUploadButton = ({ onUploadComplete }) => {
             pathId = newId;
           }
 
-          // 3. Find or Create Category
           let categoryId;
           const { data: existingCats } = await supabase.from('categories').select('id').eq('name', row.category).eq('path_id', pathId).single();
           
@@ -185,20 +170,19 @@ const BulkUploadButton = ({ onUploadComplete }) => {
             categoryId = newCatId;
           }
 
-          // 4. Insert Material
           const newMatId = `mat-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
           await supabase.from('materials').insert({
             id: newMatId,
             category_id: categoryId,
-            name: row['material name'], // FIX: Mapped correctly to CSV header
+            name: row['material name'],
             type: row.type?.toLowerCase() || 'document',
-            url: row.url || '' // Allow empty URLs
+            url: row.url || ''
           });
           
           successCount++;
         }
 
-        alert(`Import Complete!\nAdded: ${successCount}\nSkipped: ${skippedCount} (rows missing required fields)`);
+        alert(`Import Complete!\nAdded: ${successCount}\nSkipped: ${skippedCount}`);
         onUploadComplete();
         
       } catch (error) {
@@ -206,7 +190,7 @@ const BulkUploadButton = ({ onUploadComplete }) => {
         alert('Error parsing CSV. Please check the file format.');
       } finally {
         setUploading(false);
-        e.target.value = null; // Reset input
+        e.target.value = null;
       }
     };
 
@@ -286,6 +270,191 @@ const MaterialForm = ({ onSave, onCancel, initialData = null }) => {
       <div className="flex space-x-2 pt-2">
         <button onClick={handleSubmit} className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium">{initialData ? 'Update' : 'Add'}</button>
         <button onClick={onCancel} className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
+      </div>
+    </div>
+  );
+};
+
+const UserForm = ({ onSave, onCancel, initialData = null, branches }) => {
+  const [name, setName] = useState(initialData?.name || '');
+  const [username, setUsername] = useState(initialData?.username || '');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState(initialData?.role || 'staff');
+  const [branchId, setBranchId] = useState(initialData?.branchId || '');
+
+  const handleSubmit = () => {
+    if (!name || !username || (!initialData && !password)) {
+      alert('Please fill in all required fields');
+      return;
+    }
+    
+    if ((role === 'staff' || role === 'manager') && !branchId) {
+      alert('Please select a branch for staff and manager users');
+      return;
+    }
+
+    const userData = {
+      name,
+      username,
+      role,
+      branchId: role === 'admin' ? null : branchId
+    };
+
+    if (password) {
+      userData.password = password;
+    }
+
+    onSave(userData);
+  };
+
+  return (
+    <div className="space-y-4 p-6 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border-2 border-purple-200">
+      <h3 className="text-lg font-semibold text-gray-900">{initialData ? 'Edit User' : 'Add New User'}</h3>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="John Doe"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+            autoFocus
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="johndoe"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Password {initialData && '(leave blank to keep current)'}
+          </label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={initialData ? 'Leave blank to keep current' : 'Enter password'}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+          >
+            <option value="staff">Staff</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+
+        {(role === 'staff' || role === 'manager') && (
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Branch *</label>
+            <select
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+            >
+              <option value="">Select a branch</option>
+              {branches.map(branch => (
+                <option key={branch.id} value={branch.id}>{branch.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      <div className="flex space-x-3 pt-2">
+        <button
+          onClick={handleSubmit}
+          className="flex-1 px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+        >
+          {initialData ? 'Update User' : 'Create User'}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const BranchForm = ({ onSave, onCancel, initialData = null, users }) => {
+  const [name, setName] = useState(initialData?.name || '');
+  const [managerId, setManagerId] = useState(initialData?.managerId || '');
+
+  const managers = users.filter(u => u.role === 'manager');
+
+  const handleSubmit = () => {
+    if (!name) {
+      alert('Please enter a branch name');
+      return;
+    }
+    onSave({ name, managerId: managerId || null });
+  };
+
+  return (
+    <div className="space-y-4 p-6 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl border-2 border-indigo-200">
+      <h3 className="text-lg font-semibold text-gray-900">{initialData ? 'Edit Branch' : 'Add New Branch'}</h3>
+      
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Branch Name *</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Main Branch"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+            autoFocus
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Manager</label>
+          <select
+            value={managerId}
+            onChange={(e) => setManagerId(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">No manager assigned</option>
+            {managers.map(manager => (
+              <option key={manager.id} value={manager.id}>{manager.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="flex space-x-3 pt-2">
+        <button
+          onClick={handleSubmit}
+          className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+        >
+          {initialData ? 'Update Branch' : 'Create Branch'}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          Cancel
+        </button>
       </div>
     </div>
   );
@@ -426,7 +595,7 @@ const ManagerDashboard = ({ currentUser, users, branches, trainingPaths, progres
   );
 };
 
-const AdminDashboard = ({ currentUser, users, branches, trainingPaths, progress, onLogout, onRenamePath, onAddPath, onDeletePath, onAddCategory, onUpdateCategory, onDeleteCategory, onRenameCategory, onAddMaterial, onUpdateMaterial, onDeleteMaterial, onRefreshData }) => {
+const AdminDashboard = ({ currentUser, users, branches, trainingPaths, progress, onLogout, onRenamePath, onAddPath, onDeletePath, onAddCategory, onUpdateCategory, onDeleteCategory, onRenameCategory, onAddMaterial, onUpdateMaterial, onDeleteMaterial, onRefreshData, onAddUser, onUpdateUser, onDeleteUser, onAddBranch, onUpdateBranch, onDeleteBranch }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [editingPath, setEditingPath] = useState(null);
   const [editingCategory, setEditingCategory] = useState(null);
@@ -436,6 +605,10 @@ const AdminDashboard = ({ currentUser, users, branches, trainingPaths, progress,
   const [editingMaterial, setEditingMaterial] = useState(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newPathName, setNewPathName] = useState('');
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [showAddBranch, setShowAddBranch] = useState(false);
+  const [editingBranch, setEditingBranch] = useState(null);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50">
@@ -450,23 +623,25 @@ const AdminDashboard = ({ currentUser, users, branches, trainingPaths, progress,
         <div className="mb-6 border-b border-gray-200 flex space-x-8">
           <button onClick={() => setActiveTab('overview')} className={`pb-4 px-2 font-medium border-b-2 transition-colors ${activeTab === 'overview' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Overview</button>
           <button onClick={() => setActiveTab('manage')} className={`pb-4 px-2 font-medium border-b-2 transition-colors ${activeTab === 'manage' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Manage Training</button>
+          <button onClick={() => setActiveTab('users')} className={`pb-4 px-2 font-medium border-b-2 transition-colors ${activeTab === 'users' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Manage Users</button>
+          <button onClick={() => setActiveTab('branches')} className={`pb-4 px-2 font-medium border-b-2 transition-colors ${activeTab === 'branches' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Manage Branches</button>
         </div>
 
-        {activeTab === 'overview' ? (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              {branches.map(branch => {
-                const branchProg = getBranchProgress(users, trainingPaths, progress, branch.id);
-                return (
-                  <div key={branch.id} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                    <div className="flex justify-between mb-4"><h3 className="text-lg font-semibold text-gray-900">{branch.name}</h3><div className="text-right"><div className="text-2xl font-bold text-purple-600">{branchProg.percentage}%</div></div></div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5"><div className="bg-purple-600 h-2.5 rounded-full" style={{ width: `${branchProg.percentage}%` }}></div></div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        ) : (
+        {activeTab === 'overview' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {branches.map(branch => {
+              const branchProg = getBranchProgress(users, trainingPaths, progress, branch.id);
+              return (
+                <div key={branch.id} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                  <div className="flex justify-between mb-4"><h3 className="text-lg font-semibold text-gray-900">{branch.name}</h3><div className="text-right"><div className="text-2xl font-bold text-purple-600">{branchProg.percentage}%</div></div></div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5"><div className="bg-purple-600 h-2.5 rounded-full" style={{ width: `${branchProg.percentage}%` }}></div></div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {activeTab === 'manage' && (
           <div className="space-y-6">
             <div className="flex justify-end space-x-3">
               <BulkUploadButton onUploadComplete={onRefreshData} />
@@ -514,7 +689,6 @@ const AdminDashboard = ({ currentUser, users, branches, trainingPaths, progress,
                         <button onClick={() => onDeleteCategory(path.id, category.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
                       </div>
                       
-                      {/* Materials List */}
                       <div className="space-y-3 pl-4 border-l-2 border-gray-100">
                         {(category.materials || []).map(mat => (
                           <MaterialItem 
@@ -547,6 +721,180 @@ const AdminDashboard = ({ currentUser, users, branches, trainingPaths, progress,
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {activeTab === 'users' && (
+          <div className="space-y-6">
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowAddUser(true)}
+                className="flex items-center space-x-2 px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 shadow-md font-medium"
+              >
+                <UserPlus className="w-5 h-5" />
+                <span>Add User</span>
+              </button>
+            </div>
+
+            {showAddUser && (
+              <UserForm
+                branches={branches}
+                onSave={(userData) => {
+                  onAddUser(userData);
+                  setShowAddUser(false);
+                }}
+                onCancel={() => setShowAddUser(false)}
+              />
+            )}
+
+            {editingUser && (
+              <UserForm
+                initialData={editingUser}
+                branches={branches}
+                onSave={(userData) => {
+                  onUpdateUser(editingUser.id, userData);
+                  setEditingUser(null);
+                }}
+                onCancel={() => setEditingUser(null)}
+              />
+            )}
+
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+              <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-900">All Users</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Branch</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {users.map(user => {
+                      const userBranch = branches.find(b => b.id === user.branchId);
+                      return (
+                        <tr key={user.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">{user.name}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{user.username}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                              user.role === 'admin' ? 'bg-red-100 text-red-700' :
+                              user.role === 'manager' ? 'bg-blue-100 text-blue-700' :
+                              'bg-green-100 text-green-700'
+                            }`}>
+                              {user.role}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {userBranch?.name || '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                            <button
+                              onClick={() => setEditingUser(user)}
+                              className="text-purple-600 hover:text-purple-700 mr-3"
+                            >
+                              <Edit className="w-4 h-4 inline" />
+                            </button>
+                            <button
+                              onClick={() => onDeleteUser(user.id)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="w-4 h-4 inline" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'branches' && (
+          <div className="space-y-6">
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowAddBranch(true)}
+                className="flex items-center space-x-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-md font-medium"
+              >
+                <Building className="w-5 h-5" />
+                <span>Add Branch</span>
+              </button>
+            </div>
+
+            {showAddBranch && (
+              <BranchForm
+                users={users}
+                onSave={(branchData) => {
+                  onAddBranch(branchData);
+                  setShowAddBranch(false);
+                }}
+                onCancel={() => setShowAddBranch(false)}
+              />
+            )}
+
+            {editingBranch && (
+              <BranchForm
+                initialData={editingBranch}
+                users={users}
+                onSave={(branchData) => {
+                  onUpdateBranch(editingBranch.id, branchData);
+                  setEditingBranch(null);
+                }}
+                onCancel={() => setEditingBranch(null)}
+              />
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {branches.map(branch => {
+                const manager = users.find(u => u.id === branch.managerId);
+                const branchProg = getBranchProgress(users, trainingPaths, progress, branch.id);
+                
+                return (
+                  <div key={branch.id} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-900">{branch.name}</h3>
+                        <p className="text-sm text-gray-600 mt-1">Manager: {manager?.name || 'Not assigned'}</p>
+                        <p className="text-sm text-gray-600">{branchProg.staffCount} staff members</p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => setEditingBranch(branch)}
+                          className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => onDeleteBranch(branch.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-gray-600">Branch Progress</span>
+                        <span className="text-sm font-semibold text-indigo-600">{branchProg.percentage}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div className="bg-indigo-600 h-2.5 rounded-full" style={{ width: `${branchProg.percentage}%` }}></div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -685,8 +1033,51 @@ const TrainingManagementSystem = () => {
     }
   };
 
+  const addUser = async (userData) => {
+    const newId = `user-${Date.now()}`;
+    const newUser = { id: newId, ...userData };
+    setUsers(prev => [...prev, newUser]);
+    await supabase.from('users').insert(newUser);
+  };
+
+  const updateUser = async (userId, userData) => {
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...userData } : u));
+    await supabase.from('users').update(userData).match({ id: userId });
+  };
+
+  const deleteUser = async (userId) => {
+    if (confirm('Delete this user? All their progress will be lost.')) {
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      await supabase.from('users').delete().match({ id: userId });
+    }
+  };
+
+  const addBranch = async (branchData) => {
+    const newId = `branch-${Date.now()}`;
+    const newBranch = { id: newId, ...branchData };
+    setBranches(prev => [...prev, newBranch]);
+    await supabase.from('branches').insert(newBranch);
+  };
+
+  const updateBranch = async (branchId, branchData) => {
+    setBranches(prev => prev.map(b => b.id === branchId ? { ...b, ...branchData } : b));
+    await supabase.from('branches').update(branchData).match({ id: branchId });
+  };
+
+  const deleteBranch = async (branchId) => {
+    const branchUsers = users.filter(u => u.branchId === branchId);
+    if (branchUsers.length > 0) {
+      alert(`Cannot delete branch. It has ${branchUsers.length} users assigned. Please reassign them first.`);
+      return;
+    }
+    if (confirm('Delete this branch?')) {
+      setBranches(prev => prev.filter(b => b.id !== branchId));
+      await supabase.from('branches').delete().match({ id: branchId });
+    }
+  };
+
   if (!currentUser) return <LoginScreen users={users} onLogin={handleLogin} loading={loading} />;
-  if (view === 'admin-dashboard') return <AdminDashboard currentUser={currentUser} users={users} branches={branches} trainingPaths={trainingPaths} progress={progress} onLogout={handleLogout} onRenamePath={renamePath} onAddPath={addPath} onDeletePath={deletePath} onAddCategory={addCategory} onUpdateCategory={updateCategory} onDeleteCategory={deleteCategory} onRenameCategory={renameCategory} onAddMaterial={addMaterial} onUpdateMaterial={updateMaterial} onDeleteMaterial={deleteMaterial} onRefreshData={loadData} />;
+  if (view === 'admin-dashboard') return <AdminDashboard currentUser={currentUser} users={users} branches={branches} trainingPaths={trainingPaths} progress={progress} onLogout={handleLogout} onRenamePath={renamePath} onAddPath={addPath} onDeletePath={deletePath} onAddCategory={addCategory} onUpdateCategory={updateCategory} onDeleteCategory={deleteCategory} onRenameCategory={renameCategory} onAddMaterial={addMaterial} onUpdateMaterial={updateMaterial} onDeleteMaterial={deleteMaterial} onRefreshData={loadData} onAddUser={addUser} onUpdateUser={updateUser} onDeleteUser={deleteUser} onAddBranch={addBranch} onUpdateBranch={updateBranch} onDeleteBranch={deleteBranch} />;
   if (view === 'manager-dashboard') return <ManagerDashboard currentUser={currentUser} users={users} branches={branches} trainingPaths={trainingPaths} progress={progress} onLogout={handleLogout} onChangeView={setView} />;
   return <TrainingView currentUser={currentUser} trainingPaths={trainingPaths} progress={progress} onToggleComplete={toggleCategoryCompletion} onLogout={handleLogout} />;
 };
