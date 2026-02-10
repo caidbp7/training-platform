@@ -42,7 +42,6 @@ const getBranchProgress = (users, trainingPaths, progressMap, branchId) => {
   };
 };
 
-// Simple CSV Parser
 const parseCSV = (text) => {
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   const rows = [];
@@ -100,7 +99,7 @@ const parseCSV = (text) => {
 
 // --- SUB-COMPONENTS ---
 
-const LoginScreen = ({ users, onLogin, loading }) => {
+const LoginScreen = ({ onLogin, loading }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
@@ -116,7 +115,7 @@ const LoginScreen = ({ users, onLogin, loading }) => {
           <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg" placeholder="Username" />
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && onLogin(username, password)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg" placeholder="Password" />
           <button onClick={() => onLogin(username, password)} disabled={loading} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-2.5 rounded-lg font-medium shadow-lg hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50">
-            {loading ? 'Loading...' : 'Sign In'}
+            {loading ? 'Logging in...' : 'Sign In'}
           </button>
         </div>
       </div>
@@ -199,13 +198,7 @@ const BulkUploadButton = ({ onUploadComplete }) => {
 
   return (
     <div className="relative">
-      <input
-        type="file"
-        accept=".csv"
-        onChange={handleFileUpload}
-        disabled={uploading}
-        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-      />
+      <input type="file" accept=".csv" onChange={handleFileUpload} disabled={uploading} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
       <button disabled={uploading} className="flex items-center space-x-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium shadow-sm">
         <UploadCloud className="w-5 h-5 text-purple-600" />
         <span>{uploading ? 'Importing...' : 'Bulk Import CSV'}</span>
@@ -300,97 +293,41 @@ const UserForm = ({ onSave, onCancel, initialData = null, branches }) => {
       branchId: role === 'admin' ? null : branchId
     };
 
-    if (password) {
-      userData.password = password;
-    }
-
+    if (password) userData.password = password;
     onSave(userData);
   };
 
   return (
     <div className="space-y-4 p-6 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl border-2 border-purple-200">
       <h3 className="text-lg font-semibold text-gray-900">{initialData ? 'Edit User' : 'Add New User'}</h3>
-      
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div><label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg" autoFocus /></div>
+        <div><label className="block text-sm font-medium text-gray-700 mb-1">Username *</label><input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg" /></div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="John Doe"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-            autoFocus
-          />
+          <label className="block text-sm font-medium text-gray-700 mb-1">Password {initialData && '(leave blank to keep)'}</label>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder={initialData ? 'Unchanged' : 'Password'} />
         </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="johndoe"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Password {initialData && '(leave blank to keep current)'}
-          </label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={initialData ? 'Leave blank to keep current' : 'Enter password'}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-          />
-        </div>
-
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-          >
+          <select value={role} onChange={(e) => setRole(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
             <option value="staff">Staff</option>
             <option value="manager">Manager</option>
             <option value="admin">Admin</option>
           </select>
         </div>
-
         {(role === 'staff' || role === 'manager') && (
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">Branch *</label>
-            <select
-              value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-            >
+            <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
               <option value="">Select a branch</option>
-              {branches.map(branch => (
-                <option key={branch.id} value={branch.id}>{branch.name}</option>
-              ))}
+              {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
             </select>
           </div>
         )}
       </div>
-
       <div className="flex space-x-3 pt-2">
-        <button
-          onClick={handleSubmit}
-          className="flex-1 px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
-        >
-          {initialData ? 'Update User' : 'Create User'}
-        </button>
-        <button
-          onClick={onCancel}
-          className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-        >
-          Cancel
-        </button>
+        <button onClick={handleSubmit} className="flex-1 px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium">{initialData ? 'Update User' : 'Create User'}</button>
+        <button onClick={onCancel} className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Cancel</button>
       </div>
     </div>
   );
@@ -399,62 +336,29 @@ const UserForm = ({ onSave, onCancel, initialData = null, branches }) => {
 const BranchForm = ({ onSave, onCancel, initialData = null, users }) => {
   const [name, setName] = useState(initialData?.name || '');
   const [managerId, setManagerId] = useState(initialData?.managerId || '');
-
   const managers = users.filter(u => u.role === 'manager');
 
   const handleSubmit = () => {
-    if (!name) {
-      alert('Please enter a branch name');
-      return;
-    }
+    if (!name) { alert('Please enter a branch name'); return; }
     onSave({ name, managerId: managerId || null });
   };
 
   return (
     <div className="space-y-4 p-6 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl border-2 border-indigo-200">
       <h3 className="text-lg font-semibold text-gray-900">{initialData ? 'Edit Branch' : 'Add New Branch'}</h3>
-      
       <div className="space-y-3">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Branch Name *</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Main Branch"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
-            autoFocus
-          />
-        </div>
-
+        <div><label className="block text-sm font-medium text-gray-700 mb-1">Branch Name *</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg" autoFocus /></div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Manager</label>
-          <select
-            value={managerId}
-            onChange={(e) => setManagerId(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
-          >
+          <select value={managerId} onChange={(e) => setManagerId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
             <option value="">No manager assigned</option>
-            {managers.map(manager => (
-              <option key={manager.id} value={manager.id}>{manager.name}</option>
-            ))}
+            {managers.map(manager => <option key={manager.id} value={manager.id}>{manager.name}</option>)}
           </select>
         </div>
       </div>
-
       <div className="flex space-x-3 pt-2">
-        <button
-          onClick={handleSubmit}
-          className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
-        >
-          {initialData ? 'Update Branch' : 'Create Branch'}
-        </button>
-        <button
-          onClick={onCancel}
-          className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-        >
-          Cancel
-        </button>
+        <button onClick={handleSubmit} className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">{initialData ? 'Update Branch' : 'Create Branch'}</button>
+        <button onClick={onCancel} className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Cancel</button>
       </div>
     </div>
   );
@@ -913,6 +817,7 @@ const TrainingManagementSystem = () => {
   const [view, setView] = useState('login');
   const [loading, setLoading] = useState(true);
 
+  // Load Data
   const loadData = async () => {
     setLoading(true);
     try {
@@ -935,7 +840,9 @@ const TrainingManagementSystem = () => {
       if (progressData) {
         const progressMap = {};
         progressData.forEach(p => {
-          if (p.completed) progressMap[`${p.user_id}-${p.path_id}-${p.category_id}`] = true;
+          if (p.completed) {
+            progressMap[`${p.user_id}-${p.path_id}-${p.category_id}`] = true;
+          }
         });
         setProgress(progressMap);
       }
@@ -946,20 +853,92 @@ const TrainingManagementSystem = () => {
     }
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  const handleLogin = (username, password) => {
-    const user = users.find(u => u.username === username && u.password === password);
-    if (user) {
-      setCurrentUser(user);
-      setView(user.role === 'admin' ? 'admin-dashboard' : user.role === 'manager' ? 'manager-dashboard' : 'training');
+  // Handlers - SECURE AUTH UPDATES HERE
+  const handleLogin = async (username, password) => {
+    setLoading(true);
+    // Auto-append domain to make login simpler for users
+    const email = username.includes('@') ? username : `${username}@portal.com`; 
+    
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: password,
+    });
+
+    if (error) {
+      alert('Login failed: ' + error.message);
+      setLoading(false);
     } else {
-      alert('Invalid credentials');
+      const { data: userProfile } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (userProfile) {
+        setCurrentUser(userProfile);
+        if (userProfile.role === 'admin') setView('admin-dashboard');
+        else if (userProfile.role === 'manager') setView('manager-dashboard');
+        else setView('training');
+      } else {
+        alert('User profile not found. Please contact support.');
+      }
+      setLoading(false);
     }
   };
 
-  const handleLogout = () => { setCurrentUser(null); setView('login'); };
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    setView('login');
+  };
 
+  // Secure User Creation
+  const addUser = async (userData) => {
+    const email = userData.username.includes('@') ? userData.username : `${userData.username}@portal.com`;
+    
+    const { data, error } = await supabase.auth.signUp({
+      email: email,
+      password: userData.password,
+      options: {
+        data: {
+          username: userData.username,
+          name: userData.name,
+          role: userData.role,
+          branchId: userData.branchId
+        }
+      }
+    });
+
+    if (error) {
+      alert('Error creating user: ' + error.message);
+    } else {
+      alert('User created successfully! (Note: You may need to re-login as Admin)');
+      // Refresh list
+      const { data: newUsers } = await supabase.from('users').select('*');
+      if (newUsers) setUsers(newUsers);
+    }
+  };
+
+  const updateUser = async (userId, userData) => {
+    // Note: This only updates the profile table, not the auth email/password
+    const { password, ...safeUserData } = userData; // Strip password
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...safeUserData } : u));
+    await supabase.from('users').update(safeUserData).match({ id: userId });
+  };
+
+  const deleteUser = async (userId) => {
+    if (confirm('Delete this user? All their progress will be lost.')) {
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      // Note: This deletes the profile. The auth user remains but is orphaned.
+      await supabase.from('users').delete().match({ id: userId });
+    }
+  };
+
+  // ... (Other handlers remain same) ...
   const toggleCategoryCompletion = async (pathId, categoryId) => {
     const key = `${currentUser.id}-${pathId}-${categoryId}`;
     const isComplete = progress[key];
@@ -1033,25 +1012,6 @@ const TrainingManagementSystem = () => {
     }
   };
 
-  const addUser = async (userData) => {
-    const newId = `user-${Date.now()}`;
-    const newUser = { id: newId, ...userData };
-    setUsers(prev => [...prev, newUser]);
-    await supabase.from('users').insert(newUser);
-  };
-
-  const updateUser = async (userId, userData) => {
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...userData } : u));
-    await supabase.from('users').update(userData).match({ id: userId });
-  };
-
-  const deleteUser = async (userId) => {
-    if (confirm('Delete this user? All their progress will be lost.')) {
-      setUsers(prev => prev.filter(u => u.id !== userId));
-      await supabase.from('users').delete().match({ id: userId });
-    }
-  };
-
   const addBranch = async (branchData) => {
     const newId = `branch-${Date.now()}`;
     const newBranch = { id: newId, ...branchData };
@@ -1067,7 +1027,7 @@ const TrainingManagementSystem = () => {
   const deleteBranch = async (branchId) => {
     const branchUsers = users.filter(u => u.branchId === branchId);
     if (branchUsers.length > 0) {
-      alert(`Cannot delete branch. It has ${branchUsers.length} users assigned. Please reassign them first.`);
+      alert(`Cannot delete branch. It has ${branchUsers.length} users assigned.`);
       return;
     }
     if (confirm('Delete this branch?')) {
@@ -1076,10 +1036,64 @@ const TrainingManagementSystem = () => {
     }
   };
 
-  if (!currentUser) return <LoginScreen users={users} onLogin={handleLogin} loading={loading} />;
-  if (view === 'admin-dashboard') return <AdminDashboard currentUser={currentUser} users={users} branches={branches} trainingPaths={trainingPaths} progress={progress} onLogout={handleLogout} onRenamePath={renamePath} onAddPath={addPath} onDeletePath={deletePath} onAddCategory={addCategory} onUpdateCategory={updateCategory} onDeleteCategory={deleteCategory} onRenameCategory={renameCategory} onAddMaterial={addMaterial} onUpdateMaterial={updateMaterial} onDeleteMaterial={deleteMaterial} onRefreshData={loadData} onAddUser={addUser} onUpdateUser={updateUser} onDeleteUser={deleteUser} onAddBranch={addBranch} onUpdateBranch={updateBranch} onDeleteBranch={deleteBranch} />;
-  if (view === 'manager-dashboard') return <ManagerDashboard currentUser={currentUser} users={users} branches={branches} trainingPaths={trainingPaths} progress={progress} onLogout={handleLogout} onChangeView={setView} />;
-  return <TrainingView currentUser={currentUser} trainingPaths={trainingPaths} progress={progress} onToggleComplete={toggleCategoryCompletion} onLogout={handleLogout} />;
+  // Main Render
+  if (!currentUser) {
+    return <LoginScreen onLogin={handleLogin} loading={loading} />;
+  }
+
+  if (view === 'admin-dashboard') {
+    return (
+      <AdminDashboard
+        currentUser={currentUser}
+        users={users}
+        branches={branches}
+        trainingPaths={trainingPaths}
+        progress={progress}
+        onLogout={handleLogout}
+        onRenamePath={renamePath}
+        onAddPath={addPath}
+        onDeletePath={deletePath}
+        onAddCategory={addCategory}
+        onUpdateCategory={updateCategory}
+        onDeleteCategory={deleteCategory}
+        onRenameCategory={renameCategory}
+        onAddMaterial={addMaterial}
+        onUpdateMaterial={updateMaterial}
+        onDeleteMaterial={deleteMaterial}
+        onRefreshData={loadData}
+        onAddUser={addUser}
+        onUpdateUser={updateUser}
+        onDeleteUser={deleteUser}
+        onAddBranch={addBranch}
+        onUpdateBranch={updateBranch}
+        onDeleteBranch={deleteBranch}
+      />
+    );
+  }
+
+  if (view === 'manager-dashboard') {
+    return (
+      <ManagerDashboard
+        currentUser={currentUser}
+        users={users}
+        branches={branches}
+        trainingPaths={trainingPaths}
+        progress={progress}
+        onLogout={handleLogout}
+        onChangeView={setView}
+      />
+    );
+  }
+
+  return (
+    <TrainingView
+      currentUser={currentUser}
+      trainingPaths={trainingPaths}
+      progress={progress}
+      onToggleComplete={toggleCategoryCompletion}
+      onLogout={handleLogout}
+    />
+  );
 };
 
 export default TrainingManagementSystem;
