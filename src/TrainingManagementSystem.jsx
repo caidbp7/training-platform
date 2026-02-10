@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Check, ChevronDown, ChevronRight, Link as LinkIcon, Trash2, Edit, Plus, X, LogOut, Users, TrendingUp, BookOpen, Menu, FileText, Video, File, UploadCloud, UserPlus, Building } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Link as LinkIcon, Trash2, Edit, Plus, X, LogOut, Users, TrendingUp, BookOpen, Menu, FileText, Video, File, UploadCloud, UserPlus, Building, MapPin } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 // --- HELPER FUNCTIONS ---
@@ -123,7 +123,7 @@ const LoginScreen = ({ onLogin, loading }) => {
   );
 };
 
-const BulkUploadButton = ({ onUploadComplete }) => {
+const BulkUploadButton = ({ onUploadComplete, type = 'materials' }) => {
   const [uploading, setUploading] = useState(false);
 
   const handleFileUpload = async (e) => {
@@ -138,51 +138,11 @@ const BulkUploadButton = ({ onUploadComplete }) => {
         const text = event.target.result;
         const data = parseCSV(text);
         
-        let successCount = 0;
-        let skippedCount = 0;
-
-        for (const row of data) {
-          if (!row.path || !row.category || !row['material name']) {
-            skippedCount++;
-            continue;
-          }
-
-          let pathId;
-          const { data: existingPaths } = await supabase.from('training_paths').select('id').eq('name', row.path).single();
-          
-          if (existingPaths) {
-            pathId = existingPaths.id;
-          } else {
-            const newId = `path-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-            await supabase.from('training_paths').insert({ id: newId, name: row.path });
-            pathId = newId;
-          }
-
-          let categoryId;
-          const { data: existingCats } = await supabase.from('categories').select('id').eq('name', row.category).eq('path_id', pathId).single();
-          
-          if (existingCats) {
-            categoryId = existingCats.id;
-          } else {
-            const newCatId = `cat-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-            await supabase.from('categories').insert({ id: newCatId, path_id: pathId, name: row.category });
-            categoryId = newCatId;
-          }
-
-          const newMatId = `mat-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-          await supabase.from('materials').insert({
-            id: newMatId,
-            category_id: categoryId,
-            name: row['material name'],
-            type: row.type?.toLowerCase() || 'document',
-            url: row.url || ''
-          });
-          
-          successCount++;
+        if (type === 'branches') {
+          await handleBranchUpload(data);
+        } else {
+          await handleMaterialUpload(data);
         }
-
-        alert(`Import Complete!\nAdded: ${successCount}\nSkipped: ${skippedCount}`);
-        onUploadComplete();
         
       } catch (error) {
         console.error(error);
@@ -196,12 +156,85 @@ const BulkUploadButton = ({ onUploadComplete }) => {
     reader.readAsText(file);
   };
 
+  const handleBranchUpload = async (data) => {
+    let successCount = 0;
+    let skippedCount = 0;
+
+    for (const row of data) {
+      if (!row['branch name']) {
+        skippedCount++;
+        continue;
+      }
+
+      const newId = `branch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      await supabase.from('branches').insert({
+        id: newId,
+        name: row['branch name'],
+        region: row.region || null,
+        managerId: null // Manager can be assigned later
+      });
+      
+      successCount++;
+    }
+
+    alert(`Branch Import Complete!\nAdded: ${successCount}\nSkipped: ${skippedCount}`);
+    onUploadComplete();
+  };
+
+  const handleMaterialUpload = async (data) => {
+    let successCount = 0;
+    let skippedCount = 0;
+
+    for (const row of data) {
+      if (!row.path || !row.category || !row['material name']) {
+        skippedCount++;
+        continue;
+      }
+
+      let pathId;
+      const { data: existingPaths } = await supabase.from('training_paths').select('id').eq('name', row.path).single();
+      
+      if (existingPaths) {
+        pathId = existingPaths.id;
+      } else {
+        const newId = `path-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+        await supabase.from('training_paths').insert({ id: newId, name: row.path });
+        pathId = newId;
+      }
+
+      let categoryId;
+      const { data: existingCats } = await supabase.from('categories').select('id').eq('name', row.category).eq('path_id', pathId).single();
+      
+      if (existingCats) {
+        categoryId = existingCats.id;
+      } else {
+        const newCatId = `cat-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+        await supabase.from('categories').insert({ id: newCatId, path_id: pathId, name: row.category });
+        categoryId = newCatId;
+      }
+
+      const newMatId = `mat-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      await supabase.from('materials').insert({
+        id: newMatId,
+        category_id: categoryId,
+        name: row['material name'],
+        type: row.type?.toLowerCase() || 'document',
+        url: row.url || ''
+      });
+      
+      successCount++;
+    }
+
+    alert(`Material Import Complete!\nAdded: ${successCount}\nSkipped: ${skippedCount}`);
+    onUploadComplete();
+  };
+
   return (
     <div className="relative">
       <input type="file" accept=".csv" onChange={handleFileUpload} disabled={uploading} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
       <button disabled={uploading} className="flex items-center space-x-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium shadow-sm">
         <UploadCloud className="w-5 h-5 text-purple-600" />
-        <span>{uploading ? 'Importing...' : 'Bulk Import CSV'}</span>
+        <span>{uploading ? 'Importing...' : type === 'branches' ? 'Bulk Import Branches CSV' : 'Bulk Import CSV'}</span>
       </button>
     </div>
   );
@@ -320,7 +353,7 @@ const UserForm = ({ onSave, onCancel, initialData = null, branches }) => {
             <label className="block text-sm font-medium text-gray-700 mb-1">Branch *</label>
             <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
               <option value="">Select a branch</option>
-              {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+              {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name} {branch.region && `(${branch.region})`}</option>)}
             </select>
           </div>
         )}
@@ -335,19 +368,21 @@ const UserForm = ({ onSave, onCancel, initialData = null, branches }) => {
 
 const BranchForm = ({ onSave, onCancel, initialData = null, users }) => {
   const [name, setName] = useState(initialData?.name || '');
+  const [region, setRegion] = useState(initialData?.region || '');
   const [managerId, setManagerId] = useState(initialData?.managerId || '');
   const managers = users.filter(u => u.role === 'manager');
 
   const handleSubmit = () => {
     if (!name) { alert('Please enter a branch name'); return; }
-    onSave({ name, managerId: managerId || null });
+    onSave({ name, region: region || null, managerId: managerId || null });
   };
 
   return (
     <div className="space-y-4 p-6 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl border-2 border-indigo-200">
       <h3 className="text-lg font-semibold text-gray-900">{initialData ? 'Edit Branch' : 'Add New Branch'}</h3>
       <div className="space-y-3">
-        <div><label className="block text-sm font-medium text-gray-700 mb-1">Branch Name *</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg" autoFocus /></div>
+        <div><label className="block text-sm font-medium text-gray-700 mb-1">Branch Name *</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Downtown Location" className="w-full px-3 py-2 border border-gray-300 rounded-lg" autoFocus /></div>
+        <div><label className="block text-sm font-medium text-gray-700 mb-1">Region</label><input type="text" value={region} onChange={(e) => setRegion(e.target.value)} placeholder="e.g., North, South, East, West" className="w-full px-3 py-2 border border-gray-300 rounded-lg" /></div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Manager</label>
           <select value={managerId} onChange={(e) => setManagerId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
@@ -514,6 +549,16 @@ const AdminDashboard = ({ currentUser, users, branches, trainingPaths, progress,
   const [showAddBranch, setShowAddBranch] = useState(false);
   const [editingBranch, setEditingBranch] = useState(null);
 
+  // Group branches by region
+  const branchesByRegion = branches.reduce((acc, branch) => {
+    const region = branch.region || 'Unassigned';
+    if (!acc[region]) acc[region] = [];
+    acc[region].push(branch);
+    return acc;
+  }, {});
+
+  const regions = Object.keys(branchesByRegion).sort();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-purple-50">
       <div className="bg-white shadow-sm border-b border-gray-200">
@@ -524,31 +569,46 @@ const AdminDashboard = ({ currentUser, users, branches, trainingPaths, progress,
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6 border-b border-gray-200 flex space-x-8">
-          <button onClick={() => setActiveTab('overview')} className={`pb-4 px-2 font-medium border-b-2 transition-colors ${activeTab === 'overview' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Overview</button>
-          <button onClick={() => setActiveTab('manage')} className={`pb-4 px-2 font-medium border-b-2 transition-colors ${activeTab === 'manage' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Manage Training</button>
-          <button onClick={() => setActiveTab('users')} className={`pb-4 px-2 font-medium border-b-2 transition-colors ${activeTab === 'users' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Manage Users</button>
-          <button onClick={() => setActiveTab('branches')} className={`pb-4 px-2 font-medium border-b-2 transition-colors ${activeTab === 'branches' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Manage Branches</button>
+        <div className="mb-6 border-b border-gray-200 flex space-x-8 overflow-x-auto">
+          <button onClick={() => setActiveTab('overview')} className={`pb-4 px-2 font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'overview' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Overview</button>
+          <button onClick={() => setActiveTab('manage')} className={`pb-4 px-2 font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'manage' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Manage Training</button>
+          <button onClick={() => setActiveTab('users')} className={`pb-4 px-2 font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'users' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Manage Users</button>
+          <button onClick={() => setActiveTab('branches')} className={`pb-4 px-2 font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'branches' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Manage Branches</button>
         </div>
 
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {branches.map(branch => {
-              const branchProg = getBranchProgress(users, trainingPaths, progress, branch.id);
-              return (
-                <div key={branch.id} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                  <div className="flex justify-between mb-4"><h3 className="text-lg font-semibold text-gray-900">{branch.name}</h3><div className="text-right"><div className="text-2xl font-bold text-purple-600">{branchProg.percentage}%</div></div></div>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5"><div className="bg-purple-600 h-2.5 rounded-full" style={{ width: `${branchProg.percentage}%` }}></div></div>
+          <div className="space-y-8">
+            {regions.map(region => (
+              <div key={region}>
+                <div className="flex items-center space-x-2 mb-4">
+                  <MapPin className="w-5 h-5 text-indigo-600" />
+                  <h2 className="text-xl font-bold text-gray-900">{region}</h2>
+                  <span className="text-sm text-gray-500">({branchesByRegion[region].length} branches)</span>
                 </div>
-              );
-            })}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {branchesByRegion[region].map(branch => {
+                    const branchProg = getBranchProgress(users, trainingPaths, progress, branch.id);
+                    return (
+                      <div key={branch.id} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-shadow">
+                        <div className="flex justify-between mb-4">
+                          <h3 className="text-lg font-semibold text-gray-900">{branch.name}</h3>
+                          <div className="text-right"><div className="text-2xl font-bold text-purple-600">{branchProg.percentage}%</div></div>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2.5"><div className="bg-purple-600 h-2.5 rounded-full" style={{ width: `${branchProg.percentage}%` }}></div></div>
+                        <div className="mt-3 text-sm text-gray-600">{branchProg.staffCount} staff • {branchProg.completed}/{branchProg.total} modules</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
         {activeTab === 'manage' && (
           <div className="space-y-6">
             <div className="flex justify-end space-x-3">
-              <BulkUploadButton onUploadComplete={onRefreshData} />
+              <BulkUploadButton onUploadComplete={onRefreshData} type="materials" />
               <button onClick={() => setShowAddPath(true)} className="flex items-center space-x-2 px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 shadow-md">
                 <Plus className="w-5 h-5" /><span>Add Path</span>
               </button>
@@ -725,7 +785,8 @@ const AdminDashboard = ({ currentUser, users, branches, trainingPaths, progress,
 
         {activeTab === 'branches' && (
           <div className="space-y-6">
-            <div className="flex justify-end">
+            <div className="flex justify-end space-x-3">
+              <BulkUploadButton onUploadComplete={onRefreshData} type="branches" />
               <button
                 onClick={() => setShowAddBranch(true)}
                 className="flex items-center space-x-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-md font-medium"
@@ -758,46 +819,57 @@ const AdminDashboard = ({ currentUser, users, branches, trainingPaths, progress,
               />
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {branches.map(branch => {
-                const manager = users.find(u => u.id === branch.managerId);
-                const branchProg = getBranchProgress(users, trainingPaths, progress, branch.id);
-                
-                return (
-                  <div key={branch.id} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <h3 className="text-lg font-semibold text-gray-900">{branch.name}</h3>
-                        <p className="text-sm text-gray-600 mt-1">Manager: {manager?.name || 'Not assigned'}</p>
-                        <p className="text-sm text-gray-600">{branchProg.staffCount} staff members</p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => setEditingBranch(branch)}
-                          className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => onDeleteBranch(branch.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-gray-600">Branch Progress</span>
-                        <span className="text-sm font-semibold text-indigo-600">{branchProg.percentage}%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2.5">
-                        <div className="bg-indigo-600 h-2.5 rounded-full" style={{ width: `${branchProg.percentage}%` }}></div>
-                      </div>
-                    </div>
+            <div className="space-y-8">
+              {regions.map(region => (
+                <div key={region}>
+                  <div className="flex items-center space-x-2 mb-4">
+                    <MapPin className="w-5 h-5 text-indigo-600" />
+                    <h2 className="text-xl font-bold text-gray-900">{region}</h2>
+                    <span className="text-sm text-gray-500">({branchesByRegion[region].length} branches)</span>
                   </div>
-                );
-              })}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {branchesByRegion[region].map(branch => {
+                      const manager = users.find(u => u.id === branch.managerId);
+                      const branchProg = getBranchProgress(users, trainingPaths, progress, branch.id);
+                      
+                      return (
+                        <div key={branch.id} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-shadow">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex-1">
+                              <h3 className="text-lg font-semibold text-gray-900">{branch.name}</h3>
+                              <p className="text-sm text-gray-600 mt-1">Manager: {manager?.name || 'Not assigned'}</p>
+                              <p className="text-sm text-gray-600">{branchProg.staffCount} staff members</p>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => setEditingBranch(branch)}
+                                className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => onDeleteBranch(branch.id)}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="mt-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm text-gray-600">Branch Progress</span>
+                              <span className="text-sm font-semibold text-indigo-600">{branchProg.percentage}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2.5">
+                              <div className="bg-indigo-600 h-2.5 rounded-full transition-all" style={{ width: `${branchProg.percentage}%` }}></div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -817,7 +889,6 @@ const TrainingManagementSystem = () => {
   const [view, setView] = useState('login');
   const [loading, setLoading] = useState(true);
 
-  // Load Data
   const loadData = async () => {
     setLoading(true);
     try {
@@ -857,10 +928,8 @@ const TrainingManagementSystem = () => {
     loadData();
   }, []);
 
-  // Handlers - SECURE AUTH UPDATES HERE
   const handleLogin = async (username, password) => {
     setLoading(true);
-    // Auto-append domain to make login simpler for users
     const email = username.includes('@') ? username : `${username}@portal.com`; 
     
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -896,49 +965,6 @@ const TrainingManagementSystem = () => {
     setView('login');
   };
 
-  // Secure User Creation
-  const addUser = async (userData) => {
-    const email = userData.username.includes('@') ? userData.username : `${userData.username}@portal.com`;
-    
-    const { data, error } = await supabase.auth.signUp({
-      email: email,
-      password: userData.password,
-      options: {
-        data: {
-          username: userData.username,
-          name: userData.name,
-          role: userData.role,
-          branchId: userData.branchId
-        }
-      }
-    });
-
-    if (error) {
-      alert('Error creating user: ' + error.message);
-    } else {
-      alert('User created successfully! (Note: You may need to re-login as Admin)');
-      // Refresh list
-      const { data: newUsers } = await supabase.from('users').select('*');
-      if (newUsers) setUsers(newUsers);
-    }
-  };
-
-  const updateUser = async (userId, userData) => {
-    // Note: This only updates the profile table, not the auth email/password
-    const { password, ...safeUserData } = userData; // Strip password
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...safeUserData } : u));
-    await supabase.from('users').update(safeUserData).match({ id: userId });
-  };
-
-  const deleteUser = async (userId) => {
-    if (confirm('Delete this user? All their progress will be lost.')) {
-      setUsers(prev => prev.filter(u => u.id !== userId));
-      // Note: This deletes the profile. The auth user remains but is orphaned.
-      await supabase.from('users').delete().match({ id: userId });
-    }
-  };
-
-  // ... (Other handlers remain same) ...
   const toggleCategoryCompletion = async (pathId, categoryId) => {
     const key = `${currentUser.id}-${pathId}-${categoryId}`;
     const isComplete = progress[key];
@@ -1012,6 +1038,44 @@ const TrainingManagementSystem = () => {
     }
   };
 
+  const addUser = async (userData) => {
+    const email = userData.username.includes('@') ? userData.username : `${userData.username}@portal.com`;
+    
+    const { data, error } = await supabase.auth.signUp({
+      email: email,
+      password: userData.password,
+      options: {
+        data: {
+          username: userData.username,
+          name: userData.name,
+          role: userData.role,
+          branchId: userData.branchId
+        }
+      }
+    });
+
+    if (error) {
+      alert('Error creating user: ' + error.message);
+    } else {
+      alert('User created successfully!');
+      const { data: newUsers } = await supabase.from('users').select('*');
+      if (newUsers) setUsers(newUsers);
+    }
+  };
+
+  const updateUser = async (userId, userData) => {
+    const { password, ...safeUserData } = userData;
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...safeUserData } : u));
+    await supabase.from('users').update(safeUserData).match({ id: userId });
+  };
+
+  const deleteUser = async (userId) => {
+    if (confirm('Delete this user? All their progress will be lost.')) {
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      await supabase.from('users').delete().match({ id: userId });
+    }
+  };
+
   const addBranch = async (branchData) => {
     const newId = `branch-${Date.now()}`;
     const newBranch = { id: newId, ...branchData };
@@ -1036,7 +1100,6 @@ const TrainingManagementSystem = () => {
     }
   };
 
-  // Main Render
   if (!currentUser) {
     return <LoginScreen onLogin={handleLogin} loading={loading} />;
   }
