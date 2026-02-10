@@ -42,16 +42,68 @@ const getBranchProgress = (users, trainingPaths, progressMap, branchId) => {
   };
 };
 
-// Simple CSV Parser (No external libraries needed)
+// Simple CSV Parser
 const parseCSV = (text) => {
-  const lines = text.split('\n').filter(l => l.trim());
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+  // 1. Strip Byte Order Mark (BOM) if present (common in Excel CSVs)
+  if (text.charCodeAt(0) === 0xFEFF) {
+    text = text.slice(1);
+  }
+
+  const rows = [];
+  let currentRow = [];
+  let currentField = '';
+  let inQuote = false;
   
-  return lines.slice(1).map(line => {
-    const values = line.split(',');
+  // 2. State-machine parser to handle quotes and newlines correctly
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    
+    if (inQuote) {
+      if (char === '"') {
+        if (i + 1 < text.length && text[i + 1] === '"') {
+          currentField += '"'; // Handle escaped quote ("")
+          i++;
+        } else {
+          inQuote = false; // End of quoted field
+        }
+      } else {
+        currentField += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuote = true; // Start of quoted field
+      } else if (char === ',') {
+        currentRow.push(currentField.trim());
+        currentField = '';
+      } else if (char === '\n' || char === '\r') {
+        if (char === '\r' && i + 1 < text.length && text[i + 1] === '\n') {
+          i++; // Handle CRLF
+        }
+        currentRow.push(currentField.trim());
+        if (currentRow.some(field => field)) rows.push(currentRow);
+        currentRow = [];
+        currentField = '';
+      } else {
+        currentField += char;
+      }
+    }
+  }
+  
+  // Push the last row if it exists
+  if (currentField || currentRow.length > 0) {
+    currentRow.push(currentField.trim());
+    if (currentRow.some(field => field)) rows.push(currentRow);
+  }
+  
+  // 3. Map headers to lowercase keys
+  if (rows.length === 0) return [];
+  const headers = rows[0].map(h => h.toLowerCase().replace(/^\ufeff/, ''));
+  
+  return rows.slice(1).map(row => {
     const entry = {};
     headers.forEach((h, i) => {
-      entry[h] = values[i]?.trim();
+      // Map columns safely
+      entry[h] = row[i] || ''; 
     });
     return entry;
   });
@@ -99,10 +151,15 @@ const BulkUploadButton = ({ onUploadComplete }) => {
         const data = parseCSV(text);
         
         let successCount = 0;
+        let skippedCount = 0;
 
         for (const row of data) {
-          // 1. Validate Row
-          if (!row.path || !row.category || !row.material || !row.url) continue;
+          // 1. Validate Row (Updated to match your CSV headers)
+          // Note: We check row['material name'] instead of row.material
+          if (!row.path || !row.category || !row['material name']) {
+            skippedCount++;
+            continue;
+          }
 
           // 2. Find or Create Path
           let pathId;
@@ -133,20 +190,20 @@ const BulkUploadButton = ({ onUploadComplete }) => {
           await supabase.from('materials').insert({
             id: newMatId,
             category_id: categoryId,
-            name: row.material, // This maps to "Material Name" in CSV
-            type: row.type?.toLowerCase() || 'link',
-            url: row.url
+            name: row['material name'], // FIX: Mapped correctly to CSV header
+            type: row.type?.toLowerCase() || 'document',
+            url: row.url || '' // Allow empty URLs
           });
           
           successCount++;
         }
 
-        alert(`Successfully imported ${successCount} items!`);
+        alert(`Import Complete!\nAdded: ${successCount}\nSkipped: ${skippedCount} (rows missing required fields)`);
         onUploadComplete();
         
       } catch (error) {
         console.error(error);
-        alert('Error parsing CSV. Please check the format.');
+        alert('Error parsing CSV. Please check the file format.');
       } finally {
         setUploading(false);
         e.target.value = null; // Reset input
