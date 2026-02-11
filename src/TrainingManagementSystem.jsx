@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Check, ChevronDown, ChevronRight, Link as LinkIcon, Trash2, Edit, Plus, X, LogOut, Users, TrendingUp, BookOpen, Menu, FileText, Video, File, UploadCloud, UserPlus, Building, MapPin } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { supabase, supabaseUrl, supabaseKey } from './supabaseClient'; 
-import { createClient } from '@supabase/supabase-js';';
 
 // --- HELPER FUNCTIONS ---
 
