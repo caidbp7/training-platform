@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Check, ChevronDown, ChevronRight, Link as LinkIcon, Trash2, Edit, Plus, X, LogOut, Users, TrendingUp, BookOpen, Menu, FileText, Video, File, UploadCloud, UserPlus, Building, MapPin } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 
 // --- HELPER FUNCTIONS ---
@@ -1038,30 +1039,40 @@ const TrainingManagementSystem = () => {
     }
   };
 
-  const addUser = async (userData) => {
-    const email = userData.username.includes('@') ? userData.username : `${userData.username}@portal.com`;
-    
-    const { data, error } = await supabase.auth.signUp({
-      email: email,
-      password: userData.password,
-      options: {
-        data: {
-          username: userData.username,
-          name: userData.name,
-          role: userData.role,
-          branchId: userData.branchId
-        }
-      }
-    });
+ const addUser = async (userData) => {
+  // 1. Create a "Disposable" Client
+  // This client handles this ONE request without affecting your Admin login session
+  const tempSupabase = createClient(
+    import.meta.env.VITE_SUPABASE_URL,
+    import.meta.env.VITE_SUPABASE_ANON_KEY,
+    { auth: { persistSession: false } } // <--- This is the secret sauce
+  );
 
-    if (error) {
-      alert('Error creating user: ' + error.message);
-    } else {
-      alert('User created successfully!');
-      const { data: newUsers } = await supabase.from('users').select('*');
-      if (newUsers) setUsers(newUsers);
+  const email = userData.username.includes('@') ? userData.username : `${userData.username}@portal.com`;
+
+  // 2. Sign up the new user using the temporary client
+  const { data, error } = await tempSupabase.auth.signUp({
+    email: email,
+    password: userData.password,
+    options: {
+      data: {
+        username: userData.username,
+        name: userData.name,
+        role: userData.role,
+        branchId: userData.branchId
+      }
     }
-  };
+  });
+
+  if (error) {
+    alert('Error creating user: ' + error.message);
+  } else {
+    alert('User created successfully!');
+    // 3. Refresh the user list
+    const { data: newUsers } = await supabase.from('users').select('*');
+    if (newUsers) setUsers(newUsers);
+  }
+};
 
   const updateUser = async (userId, userData) => {
     const { password, ...safeUserData } = userData;
