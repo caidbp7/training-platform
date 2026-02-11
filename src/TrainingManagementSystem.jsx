@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Check, ChevronDown, ChevronRight, Link as LinkIcon, Trash2, Edit, Plus, X, LogOut, Users, TrendingUp, BookOpen, Menu, FileText, Video, File, UploadCloud, UserPlus, Building, MapPin } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-import { supabase, supabaseUrl, supabaseKey } from './supabaseClient'; 
+import { supabase } from './supabaseClient';
 
 // --- HELPER FUNCTIONS ---
 
@@ -141,6 +140,8 @@ const BulkUploadButton = ({ onUploadComplete, type = 'materials' }) => {
         
         if (type === 'branches') {
           await handleBranchUpload(data);
+        } else if (type === 'users') {
+          await handleUserUpload(data);
         } else {
           await handleMaterialUpload(data);
         }
@@ -155,6 +156,101 @@ const BulkUploadButton = ({ onUploadComplete, type = 'materials' }) => {
     };
 
     reader.readAsText(file);
+  };
+
+  const handleUserUpload = async (data) => {
+    let successCount = 0;
+    let skippedCount = 0;
+    let errorDetails = [];
+
+    // Create temporary client for bulk user creation
+    const tempSupabase = createClient(supabaseUrl, supabaseKey, {
+      auth: { persistSession: false }
+    });
+
+    for (const row of data) {
+      // Validate required fields
+      if (!row.name || !row.username || !row.password || !row.role) {
+        skippedCount++;
+        errorDetails.push(`Row skipped: Missing required fields (name: ${row.name}, username: ${row.username})`);
+        continue;
+      }
+
+      // Validate role
+      const validRoles = ['staff', 'manager', 'admin'];
+      if (!validRoles.includes(row.role.toLowerCase())) {
+        skippedCount++;
+        errorDetails.push(`Row skipped: Invalid role "${row.role}" for user ${row.username}`);
+        continue;
+      }
+
+      // For staff and manager, validate branch
+      if ((row.role.toLowerCase() === 'staff' || row.role.toLowerCase() === 'manager') && !row.branch) {
+        skippedCount++;
+        errorDetails.push(`Row skipped: Branch required for ${row.role} user ${row.username}`);
+        continue;
+      }
+
+      try {
+        // Find branch by name if specified
+        let branchId = null;
+        if (row.branch) {
+          const { data: branchData } = await supabase
+            .from('branches')
+            .select('id')
+            .eq('name', row.branch)
+            .single();
+          
+          if (!branchData) {
+            skippedCount++;
+            errorDetails.push(`Row skipped: Branch "${row.branch}" not found for user ${row.username}`);
+            continue;
+          }
+          branchId = branchData.id;
+        }
+
+        const email = row.username.includes('@') ? row.username : `${row.username}@portal.com`;
+
+        // Create auth user
+        const { data: authData, error: authError } = await tempSupabase.auth.signUp({
+          email: email,
+          password: row.password,
+          options: {
+            data: {
+              username: row.username,
+              name: row.name,
+              role: row.role.toLowerCase(),
+              branchId: branchId
+            }
+          }
+        });
+
+        if (authError) {
+          skippedCount++;
+          errorDetails.push(`Error creating user ${row.username}: ${authError.message}`);
+          continue;
+        }
+
+        successCount++;
+        
+      } catch (error) {
+        skippedCount++;
+        errorDetails.push(`Error processing user ${row.username}: ${error.message}`);
+      }
+    }
+
+    // Show detailed results
+    let message = `User Import Complete!\n✓ Successfully created: ${successCount}\n✗ Skipped: ${skippedCount}`;
+    
+    if (errorDetails.length > 0 && errorDetails.length <= 10) {
+      message += '\n\nDetails:\n' + errorDetails.join('\n');
+    } else if (errorDetails.length > 10) {
+      message += '\n\nShowing first 10 errors:\n' + errorDetails.slice(0, 10).join('\n');
+      message += `\n... and ${errorDetails.length - 10} more`;
+    }
+
+    alert(message);
+    onUploadComplete();
   };
 
   const handleBranchUpload = async (data) => {
@@ -172,7 +268,7 @@ const BulkUploadButton = ({ onUploadComplete, type = 'materials' }) => {
         id: newId,
         name: row['branch name'],
         region: row.region || null,
-        managerId: null // Manager can be assigned later
+        managerId: null
       });
       
       successCount++;
@@ -230,12 +326,19 @@ const BulkUploadButton = ({ onUploadComplete, type = 'materials' }) => {
     onUploadComplete();
   };
 
+  const getButtonText = () => {
+    if (uploading) return 'Importing...';
+    if (type === 'branches') return 'Bulk Import Branches CSV';
+    if (type === 'users') return 'Bulk Import Users CSV';
+    return 'Bulk Import CSV';
+  };
+
   return (
     <div className="relative">
       <input type="file" accept=".csv" onChange={handleFileUpload} disabled={uploading} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
       <button disabled={uploading} className="flex items-center space-x-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium shadow-sm">
         <UploadCloud className="w-5 h-5 text-purple-600" />
-        <span>{uploading ? 'Importing...' : type === 'branches' ? 'Bulk Import Branches CSV' : 'Bulk Import CSV'}</span>
+        <span>{getButtonText()}</span>
       </button>
     </div>
   );
@@ -691,7 +794,8 @@ const AdminDashboard = ({ currentUser, users, branches, trainingPaths, progress,
 
         {activeTab === 'users' && (
           <div className="space-y-6">
-            <div className="flex justify-end">
+            <div className="flex justify-end space-x-3">
+              <BulkUploadButton onUploadComplete={onRefreshData} type="users" />
               <button
                 onClick={() => setShowAddUser(true)}
                 className="flex items-center space-x-2 px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 shadow-md font-medium"
@@ -1039,40 +1143,30 @@ const TrainingManagementSystem = () => {
     }
   };
 
- const addUser = async (userData) => {
-  // 1. Create a "Disposable" Client
-  // This client handles this ONE request without affecting your Admin login session
-  const tempSupabase = createClient(supabaseUrl, supabaseKey, {
-      auth: {
-        persistSession: false // This prevents the Admin from being logged out
+  const addUser = async (userData) => {
+    const email = userData.username.includes('@') ? userData.username : `${userData.username}@portal.com`;
+    
+    const { data, error } = await supabase.auth.signUp({
+      email: email,
+      password: userData.password,
+      options: {
+        data: {
+          username: userData.username,
+          name: userData.name,
+          role: userData.role,
+          branchId: userData.branchId
+        }
       }
     });
 
-  const email = userData.username.includes('@') ? userData.username : `${userData.username}@portal.com`;
-
-  // 2. Sign up the new user using the temporary client
-  const { data, error } = await tempSupabase.auth.signUp({
-    email: email,
-    password: userData.password,
-    options: {
-      data: {
-        username: userData.username,
-        name: userData.name,
-        role: userData.role,
-        branchId: userData.branchId
-      }
+    if (error) {
+      alert('Error creating user: ' + error.message);
+    } else {
+      alert('User created successfully!');
+      const { data: newUsers } = await supabase.from('users').select('*');
+      if (newUsers) setUsers(newUsers);
     }
-  });
-
-  if (error) {
-    alert('Error creating user: ' + error.message);
-  } else {
-    alert('User created successfully!');
-    // 3. Refresh the user list
-    const { data: newUsers } = await supabase.from('users').select('*');
-    if (newUsers) setUsers(newUsers);
-  }
-};
+  };
 
   const updateUser = async (userId, userData) => {
     const { password, ...safeUserData } = userData;
