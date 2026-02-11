@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Check, ChevronDown, ChevronRight, Link as LinkIcon, Trash2, Edit, Plus, X, LogOut, Users, TrendingUp, BookOpen, Menu, FileText, Video, File, UploadCloud, UserPlus, Building, MapPin } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import { supabase } from './supabaseClient';
+import { supabase, supabaseUrl, supabaseKey } from './supabaseClient'; 
+import { createClient } from '@supabase/supabase-js';';
 
 // --- HELPER FUNCTIONS ---
 
@@ -1042,11 +1043,11 @@ const TrainingManagementSystem = () => {
  const addUser = async (userData) => {
   // 1. Create a "Disposable" Client
   // This client handles this ONE request without affecting your Admin login session
-  const tempSupabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY,
-    { auth: { persistSession: false } } // <--- This is the secret sauce
-  );
+  const tempSupabase = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: false // This prevents the Admin from being logged out
+      }
+    });
 
   const email = userData.username.includes('@') ? userData.username : `${userData.username}@portal.com`;
 
